@@ -1,0 +1,15 @@
+{
+  "name": "cf-image-hosting",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Workers + R2 图床（自动创建并绑定 R2）",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run --outdir=.wrangler/dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}

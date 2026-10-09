@@ -1,0 +1,38 @@
+{
+  // wrangler.jsonc —— Cloudflare Workers 部署配置
+  // 关键点：R2 绑定里「故意不写 bucket_name」，
+  // 首次部署时 Wrangler 会自动创建 bucket 并自动绑定到 env.BUCKET。
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Worker 名称：自动创建出来的 R2 bucket 会以此作为前缀命名
+  // 例：name = "cf-image-hosting" → bucket 名形如 cf-image-hosting-bucket
+  // 注意：Dashboard 里 Workers Builds 的 Project name 必须与此完全一致
+  "name": "cf-image-hosting",
+
+  // 入口文件（就是这份 workers.js，模块化 Worker，export default { fetch }）
+  "main": "workers.js",
+
+  // 兼容日期：不晚于今天即可
+  "compatibility_date": "2026-10-10",
+
+  // 开启 workers.dev 子域访问，部署完即可直接用
+  "workers_dev": true,
+
+  // 开启可观测性（日志 / 指标）
+  "observability": { "enabled": true },
+
+  // 上传 source map，线上报错堆栈能映射回源码行号
+  "upload_source_maps": true,
+
+  // ===== 自动供给（auto-provisioning）核心 =====
+  // 不写 bucket_name → 部署时自动创建 R2 bucket 并绑定
+  // 代码里用的是 env.BUCKET，所以 binding 必须叫 BUCKET
+  "r2_buckets": [
+    { "binding": "BUCKET" }
+  ]
+
+  // 对照写法（手动创建、已有 bucket 时用这个，需自己去控制台先建好）：
+  // "r2_buckets": [
+  //   { "binding": "BUCKET", "bucket_name": "my-existing-bucket" }
+  // ]
+}
