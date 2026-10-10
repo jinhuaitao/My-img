@@ -165,6 +165,36 @@ html.dark .auth-glow{opacity:.35}
 .with-icon>.eye{position:absolute;right:6px;top:50%;transform:translateY(-50%)}
 .auth-foot{text-align:center;color:var(--text-3);font-size:12px;margin-top:18px}
 
+/* ---------- 告警 / 人机验证 ---------- */
+.alert{display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:var(--r-md);font-size:12.5px;line-height:1.55}
+.alert-warn{background:var(--warning-soft);color:var(--warning)}
+.alert>.ic{flex:none;margin-top:2px}
+.banner{display:flex;align-items:flex-start;gap:10px;padding:12px 15px;border-radius:var(--r-md);
+  background:var(--warning-soft);color:var(--warning);font-size:13px;line-height:1.6}
+.banner>.ic{flex:none;margin-top:2px}
+.banner>.btn{margin-left:auto;flex:none}
+.ts-wrap{margin-top:2px;display:flex;flex-direction:column;align-items:center;gap:8px;min-height:66px}
+.ts-msg{font-size:12px;color:var(--danger);line-height:1.55;text-align:center}
+.ts-codes{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--text-3);
+  text-align:center;word-break:break-all}
+.ts-body{padding:18px;display:flex;flex-direction:column;gap:14px}
+.ts-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.ts-grid>.field:last-child{grid-column:1/-1}
+.tag{font-style:normal;font-size:10.5px;font-weight:500;padding:1px 6px;border-radius:999px;
+  background:var(--surface-3);color:var(--text-3);margin-left:5px}
+.tag-secret{background:var(--danger-soft);color:var(--danger)}
+.note{font-size:12.5px;line-height:1.7;color:var(--text-2);background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px}
+.note strong{color:var(--text);font-weight:600}
+.note code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+  background:var(--surface-3);padding:1px 5px;border-radius:5px;word-break:break-all}
+.diag{border-top:1px solid var(--border);padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+.diag-head{font-size:12.5px;font-weight:600;color:var(--text-2)}
+.diag .kv>div{padding:7px 0}
+.diag dd{font-size:12.5px;text-align:right}
+.mono-sm{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;word-break:break-all}
+.diag-hints{margin:0;padding-left:18px;font-size:12.5px;line-height:1.7;color:var(--text-2)}
+
 /* ---------- 主框架 ---------- */
 .shell{display:flex;height:100vh;overflow:hidden}
 .sidebar{width:244px;flex:none;display:flex;flex-direction:column;background:var(--surface);
@@ -408,6 +438,7 @@ html.dark .auth-glow{opacity:.35}
   .modal.detail{flex-direction:column;height:92vh}
   .detail-side{width:100%;max-height:46vh;border-left:0;border-top:1px solid var(--border)}
   .form-grid{grid-template-columns:1fr}
+  .ts-grid{grid-template-columns:1fr}
   .theme-grid{grid-template-columns:1fr}
   .upload-panel{right:10px;left:10px;bottom:10px;width:auto}
   .toolbar-right{margin-left:0;width:100%}
@@ -487,6 +518,10 @@ html.dark .auth-glow{opacity:.35}
         <p>{{ view==='setup' ? '创建管理员账号，开始使用' : 'Cloudflare Workers 图床控制台' }}</p>
       </div>
       <form class="auth-form" @submit.prevent="submitAuth">
+        <div v-if="tsWarning" class="alert alert-warn">
+          <svg class="ic ic-sm"><use href="#i-alert"/></svg>
+          <span>{{ tsWarning }}</span>
+        </div>
         <label class="field">
           <span>用户名</span>
           <div class="with-icon">
@@ -504,12 +539,26 @@ html.dark .auth-glow{opacity:.35}
             </button>
           </div>
         </label>
+        <div v-if="view!=='setup' && ts.enabled" class="ts-wrap">
+          <div ref="tsBox"></div>
+          <p v-if="ts.error" class="ts-msg">{{ ts.error }}</p>
+        </div>
+        <p v-if="authCodes" class="ts-codes">错误码：{{ authCodes }}</p>
         <button class="btn btn-primary btn-block" type="submit" :disabled="authBusy">
           <svg v-if="authBusy" class="ic ic-sm spin"><use href="#i-loader"/></svg>
           <span>{{ view==='setup' ? '创建并进入' : '登录' }}</span>
         </button>
       </form>
       <p class="auth-foot">{{ view==='setup' ? '账号以加盐哈希形式保存在 R2 中' : '会话有效期 30 天，可在设置页修改密码' }}</p>
+      <p v-if="view!=='setup'" class="auth-foot" style="margin-top:10px">
+        <button type="button" class="btn btn-ghost btn-sm" :disabled="diagBusy" @click="runDiagnose">登录不了？运行人机验证自检</button>
+      </p>
+      <div v-if="diag && view!=='setup'" class="note" style="margin-top:12px">
+        <strong>自检结果：{{ conclusionText(diag.conclusion) }}</strong>
+        <div style="margin-top:6px">当前域名：<code>{{ diag.domain }}</code></div>
+        <div v-if="diag.codes && diag.codes.length">错误码：<code>{{ diag.codes.join(', ') }}</code></div>
+        <ul class="diag-hints" style="margin-top:8px"><li v-for="(h, i) in diag.hints" :key="i">{{ h }}</li></ul>
+      </div>
     </div>
   </div>
 
@@ -567,6 +616,11 @@ html.dark .auth-glow{opacity:.35}
       </header>
 
       <div class="content">
+        <div v-if="appWarning" class="banner" style="max-width:1400px;margin:0 auto 16px">
+          <svg class="ic"><use href="#i-alert"/></svg>
+          <span>{{ appWarning }}</span>
+          <button class="btn btn-ghost btn-sm" @click="dismissWarning">知道了</button>
+        </div>
         <section v-if="tab==='dashboard'" class="page">
           <div class="stats">
             <div class="card stat">
@@ -788,6 +842,83 @@ html.dark .auth-glow{opacity:.35}
           </div>
 
           <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>人机验证（Cloudflare Turnstile）</h3>
+                <p>开启后登录页会要求完成人机验证，可有效防止口令爆破</p>
+              </div>
+              <span class="chip" :class="tsStatusClass">{{ tsStatusText }}</span>
+            </div>
+            <div class="ts-body">
+              <div class="ts-grid">
+                <label class="field">
+                  <span>Site Key <em class="tag">公开值</em></span>
+                  <input class="input mono" v-model="tsForm.siteKey" placeholder="0x4AAAAAAAxxxxxxxxxxxxxxxx">
+                </label>
+                <label class="field">
+                  <span>Secret Key <em class="tag tag-secret">仅服务端</em></span>
+                  <input class="input mono" type="password" autocomplete="new-password" v-model="tsForm.secretKey"
+                    :placeholder="settings.turnstileSecretKeySet ? ('已配置：' + settings.turnstileSecretKeyMasked + '（留空则不修改）') : '0x4AAAAAAAxxxxxxxxxxxxxxxx'">
+                </label>
+                <label class="field">
+                  <span>容错模式</span>
+                  <select class="input" v-model="tsForm.mode">
+                    <option value="strict">严格（推荐）</option>
+                    <option value="lenient">宽松（调试用，会降低防护强度）</option>
+                  </select>
+                </label>
+              </div>
+
+              <div v-if="settings.forceOff" class="note">
+                <strong>人机验证已被破窗开关关闭。</strong>
+                删除 R2 桶里的对象 <code>.sys_turnstile_off</code> 即可恢复，无需修改密钥配置。
+              </div>
+              <div v-else-if="settings.source === 'env'" class="note">
+                当前生效的密钥来自<strong>环境变量</strong>
+                （<code>TURNSTILE_SITE_KEY</code> / <code>TURNSTILE_SECRET_KEY</code>）。
+                在下面填写应用内配置会<strong>覆盖</strong>环境变量；清空后自动回退到环境变量。
+              </div>
+              <div v-else class="note">
+                <strong>两个注意点：</strong>
+                ① 密钥存在 R2 里，R2 的值<strong>没有静态加密</strong>（环境变量 Secret 是加密存储的）——
+                换来的是部署后完全不用碰 Cloudflare 控制台。
+                ② <code>*.workers.dev</code> 域名<strong>不会自动匹配</strong>，需要到该 widget 的
+                Hostname Management 里显式填写，否则组件会报 <code>110200</code>。
+              </div>
+
+              <div class="form-foot">
+                <button class="btn btn-outline" :disabled="diagBusy" @click="runDiagnose">
+                  <svg v-if="diagBusy" class="ic ic-sm spin"><use href="#i-loader"/></svg>
+                  <svg v-else class="ic ic-sm"><use href="#i-refresh"/></svg>
+                  <span>自检</span>
+                </button>
+                <button class="btn btn-danger" :disabled="tsBusy || (!settings.turnstileSiteKey && !settings.turnstileSecretKeySet)" @click="clearTurnstile">
+                  <svg class="ic ic-sm"><use href="#i-trash"/></svg><span>清空</span>
+                </button>
+                <button class="btn btn-primary" :disabled="tsBusy" @click="saveTurnstile">
+                  <svg v-if="tsBusy" class="ic ic-sm spin"><use href="#i-loader"/></svg>
+                  <svg v-else class="ic ic-sm"><use href="#i-key"/></svg>
+                  <span>保存</span>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="diag" class="diag">
+              <div class="diag-head">自检结果</div>
+              <dl class="kv compact">
+                <div><dt>当前域名</dt><dd class="mono-sm">{{ diag.domain }}</dd></div>
+                <div><dt>配置来源</dt><dd>{{ sourceText(diag.source) }}</dd></div>
+                <div><dt>Site Key</dt><dd class="mono-sm">{{ diag.siteKeyMasked || '未配置' }}</dd></div>
+                <div><dt>Secret Key</dt><dd class="mono-sm">{{ diag.secretKeyMasked || '未配置' }}</dd></div>
+                <div><dt>Secret Key 有效性</dt><dd>{{ diag.secretKeyValid === null ? '未检测' : (diag.secretKeyValid ? '有效' : '无效') }}</dd></div>
+                <div><dt>结论</dt><dd>{{ conclusionText(diag.conclusion) }}</dd></div>
+                <div v-if="diag.codes && diag.codes.length"><dt>错误码</dt><dd class="mono-sm">{{ diag.codes.join(', ') }}</dd></div>
+              </dl>
+              <ul class="diag-hints"><li v-for="(h, i) in diag.hints" :key="i">{{ h }}</li></ul>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card-head"><div><h3>存储信息</h3><p>数据保存在 Cloudflare R2 存储桶中</p></div></div>
             <dl class="kv" style="padding:0 18px 8px">
               <div><dt>对象数量</dt><dd>{{ images.length }} 个</dd></div>
@@ -963,6 +1094,32 @@ html.dark .auth-glow{opacity:.35}
   var TOKEN_KEY = 'ih_token';
   var ORIGIN = window.location.origin;
 
+  // Turnstile 浏览器组件的错误码 → 中文修复指引
+  var CLIENT_HINTS = {
+    '110100': 'Site Key 无效或格式不对，可能复制不完整。',
+    '400020': 'Site Key 无效：检查是否把 Secret Key 填到了 Site Key 输入框。',
+    '110110': 'Site Key 不存在，或不属于当前 Cloudflare 账号。',
+    '110200': '域名未授权：控制台 → 该 widget → Hostname Management 里加入当前域名。注意 *.workers.dev 需要显式填写，通配符无效。',
+    '400021': '域名与 Site Key 不匹配，请检查 Hostname Management。',
+    '110500': '组件模式不匹配：请把 widget 改成 Managed 模式。',
+    '110600': '验证超时，请重新完成一次验证。',
+    '400070': '该 Site Key 已停用，请重新启用或更换 widget。'
+  };
+
+  var CONCLUSION_TEXT = {
+    'not-configured': '未配置',
+    'emergency-off': '已被破窗开关关闭',
+    'secret-invalid': 'Secret Key 无效',
+    'secret-ok': 'Secret Key 有效',
+    'unreachable': '验证服务不可达'
+  };
+
+  var SOURCE_TEXT = {
+    settings: '应用内设置',
+    env: '环境变量',
+    none: '未配置'
+  };
+
   function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
   function fmtSize(bytes) {
@@ -1025,6 +1182,24 @@ html.dark .auth-glow{opacity:.35}
       var fileInput = ref(null);
       var searchInput = ref(null);
 
+      // 人机验证（登录页）
+      var tsBox = ref(null);
+      var tsWarning = ref('');
+      var authCodes = ref('');
+      var appWarning = ref('');
+      var diagBusy = ref(false);
+      var tsBusy = ref(false);
+      var diag = ref(null);
+      var ts = reactive({ enabled: false, siteKey: '', mode: 'strict', source: 'none', forceOff: false, error: '', token: '', clientError: '' });
+
+      // 人机验证（设置页）
+      var settings = reactive({
+        turnstileSiteKey: '', turnstileSecretKeySet: false, turnstileSecretKeyMasked: '',
+        turnstileMode: 'strict', source: 'none', enabled: false, forceOff: false,
+        envFallback: { siteKeySet: false, secretKeySet: false }
+      });
+      var tsForm = reactive({ siteKey: '', secretKey: '', mode: 'strict' });
+
       var form = reactive({ username: '', password: '' });
       var pwdForm = reactive({ currentPassword: '', username: '', password: '', confirm: '' });
       var detail = reactive({ open: false, key: '', zoom: 1, rotate: 0 });
@@ -1051,6 +1226,8 @@ html.dark .auth-glow{opacity:.35}
         themeMode.value = mode;
         try { localStorage.setItem('ih_theme', mode); } catch (e) {}
         applyTheme();
+        // 验证组件的明暗是渲染时固化的，切换主题后需要重渲染
+        if (ts.enabled && view.value !== 'app') setTimeout(renderTurnstile, 60);
       }
 
       function cycleTheme() {
@@ -1167,6 +1344,19 @@ html.dark .auth-glow{opacity:.35}
         return upload.items.filter(function (it) { return it.status === 'done' || it.status === 'error'; }).length;
       });
 
+      var tsStatusText = computed(function () {
+        if (settings.forceOff) return '已被破窗开关关闭';
+        if (settings.enabled) return settings.source === 'env' ? '已启用（环境变量）' : '已启用';
+        if (settings.turnstileSiteKey || settings.turnstileSecretKeySet) return '配置不完整';
+        return '未启用';
+      });
+
+      var tsStatusClass = computed(function () {
+        if (settings.forceOff) return 'chip-danger';
+        if (settings.enabled) return 'chip-accent';
+        return '';
+      });
+
       /* ---------------- 基础工具 ---------------- */
 
       function fileUrl(key) {
@@ -1265,10 +1455,16 @@ html.dark .auth-glow{opacity:.35}
             if (res.status === 401) {
               localStorage.removeItem(TOKEN_KEY);
               view.value = 'login';
-              throw new Error((data && data.error) || '登录已过期，请重新登录');
+              var authErr = new Error((data && data.error) || '登录已过期，请重新登录');
+              authErr.status = 401;
+              authErr.data = data || {};
+              throw authErr;
             }
             if (!res.ok) {
-              throw new Error((data && data.error) || ('请求失败（HTTP ' + res.status + '）'));
+              var err = new Error((data && data.error) || ('请求失败（HTTP ' + res.status + '）'));
+              err.status = res.status;
+              err.data = data || {};
+              throw err;
             }
             return data || {};
           });
@@ -1281,6 +1477,7 @@ html.dark .auth-glow{opacity:.35}
 
       function boot() {
         applyTheme();
+        try { appWarning.value = sessionStorage.getItem('ih_warning') || ''; } catch (e) { appWarning.value = ''; }
         api('/status').then(function (data) {
           if (!data.setup) { view.value = 'setup'; return; }
           if (data.authed) {
@@ -1325,17 +1522,47 @@ html.dark .auth-glow{opacity:.35}
         var isSetup = view.value === 'setup';
         var path = isSetup ? '/setup' : '/login';
         if (!form.username.trim() || !form.password) { toast('请填写用户名和密码', 'error'); return; }
+        // 提交前不撒谎：组件自己报过错就显示那个错误码对应的指引，而不是笼统的「请完成验证」
+        if (!isSetup && ts.enabled && !ts.token) {
+          authCodes.value = ts.clientError || '';
+          toast(ts.error || '请先完成人机验证', 'error');
+          return;
+        }
+
         authBusy.value = true;
-        api(path, { method: 'POST', body: { username: form.username.trim(), password: form.password } })
+        authCodes.value = '';
+        tsWarning.value = '';
+        api(path, {
+          method: 'POST',
+          body: {
+            username: form.username.trim(),
+            password: form.password,
+            cfToken: ts.token || '',
+            cfError: ts.clientError || ''
+          }
+        })
           .then(function (data) {
             if (data.token) { try { localStorage.setItem(TOKEN_KEY, data.token); } catch (e) {} }
             username.value = data.username || form.username.trim();
             form.password = '';
             view.value = 'app';
+            if (data.warning) {
+              appWarning.value = data.warning;
+              try { sessionStorage.setItem('ih_warning', data.warning); } catch (e) {}
+            }
             toast(isSetup ? '初始化完成，已登录' : '欢迎回来');
             return loadAll();
           })
-          .catch(function (err) { toast(err.message, 'error'); })
+          .catch(function (err) {
+            toast(err.message, 'error');
+            var payload = err.data || {};
+            if (payload.codes && payload.codes.length) {
+              authCodes.value = payload.codes.join(', ');
+              if (payload.hint) toast(payload.hint, 'error');
+            }
+            // 无论哪种失败都要重置组件：token 是一次性的
+            if (!isSetup) resetTurnstile();
+          })
           .then(function () { authBusy.value = false; });
       }
 
@@ -1373,6 +1600,161 @@ html.dark .auth-glow{opacity:.35}
           pwdForm.confirm = '';
         }).catch(function (err) { toast(err.message, 'error'); })
           .then(function () { pwdBusy.value = false; });
+      }
+
+      /* ---------------- 人机验证（登录页） ---------------- */
+
+      var tsWidgetId = null;
+      var tsTimer = null;
+
+      function loadTurnstileScript() {
+        if (window.turnstile) { renderTurnstile(); return; }
+        // 去重：脚本可能已由上一次会话注入
+        if (document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) return;
+
+        window.__ihTurnstileReady = function () { renderTurnstile(); };
+        var el = document.createElement('script');
+        el.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=__ihTurnstileReady';
+        el.async = true;
+        el.defer = true;
+        el.onerror = function () {
+          ts.error = '验证组件脚本加载失败：可能被网络、CSP 或浏览器插件拦截。';
+        };
+        document.head.appendChild(el);
+
+        // 兜底：脚本被拦掉时 onload 永不触发，页面上只剩一个空白方块
+        clearTimeout(tsTimer);
+        tsTimer = setTimeout(function () {
+          if (!window.turnstile && !ts.error) {
+            ts.error = '验证组件加载超时（8 秒）：请检查网络，或确认 challenges.cloudflare.com 没有被拦截。';
+          }
+        }, 8000);
+      }
+
+      function renderTurnstile() {
+        if (!ts.enabled) return;
+        // 不能静默 return，否则用户会面对一个没有验证框、却次次提示验证失败的登录页
+        if (!ts.siteKey) { ts.error = '已启用人机验证但 Site Key 为空，请到设置页补全后刷新页面。'; return; }
+        if (!window.turnstile || !tsBox.value) return;
+
+        if (tsWidgetId !== null) {
+          try { window.turnstile.remove(tsWidgetId); } catch (e) {}
+          tsWidgetId = null;
+        }
+        ts.error = '';
+        try {
+          tsWidgetId = window.turnstile.render(tsBox.value, {
+            sitekey: ts.siteKey,
+            theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+            callback: function (token) { ts.token = token; ts.error = ''; },
+            'error-callback': function (code) {
+              ts.clientError = String(code);
+              ts.error = CLIENT_HINTS[String(code)] || ('验证组件异常（错误码 ' + code + '）');
+              return true;
+            },
+            'timeout-callback': function () { ts.error = CLIENT_HINTS['110600']; },
+            'expired-callback': function () { ts.token = ''; }
+          });
+        } catch (e) {
+          ts.error = '验证组件渲染失败：' + ((e && e.message) ? e.message : e);
+        }
+      }
+
+      function resetTurnstile() {
+        // token 是一次性的（300 秒），任何一次失败之后都必须重置，否则重试必然失败
+        ts.token = '';
+        if (window.turnstile && tsWidgetId !== null) {
+          try { window.turnstile.reset(tsWidgetId); } catch (e) {}
+        }
+      }
+
+      function refreshTurnstile() {
+        return api('/turnstile/config').then(function (data) {
+          ts.enabled = Boolean(data.enabled);
+          ts.siteKey = data.siteKey || '';
+          ts.mode = data.mode || 'strict';
+          ts.source = data.source || 'none';
+          ts.forceOff = Boolean(data.forceOff);
+          if (ts.enabled) {
+            loadTurnstileScript();
+            nextTick(function () { setTimeout(renderTurnstile, 60); });
+          } else {
+            ts.error = '';
+            ts.token = '';
+          }
+        }).catch(function () {
+          ts.enabled = false;
+        });
+      }
+
+      /* ---------------- 人机验证（设置页） ---------------- */
+
+      function sourceText(value) { return SOURCE_TEXT[value] || value || '未知'; }
+      function conclusionText(value) { return CONCLUSION_TEXT[value] || value || '未知'; }
+
+      function loadSettings() {
+        return api('/settings').then(function (data) {
+          settings.turnstileSiteKey = data.turnstileSiteKey || '';
+          settings.turnstileSecretKeySet = Boolean(data.turnstileSecretKeySet);
+          settings.turnstileSecretKeyMasked = data.turnstileSecretKeyMasked || '';
+          settings.turnstileMode = data.turnstileMode || 'strict';
+          settings.source = data.source || 'none';
+          settings.enabled = Boolean(data.enabled);
+          settings.forceOff = Boolean(data.forceOff);
+          settings.envFallback = data.envFallback || { siteKeySet: false, secretKeySet: false };
+          tsForm.siteKey = settings.turnstileSiteKey;
+          tsForm.secretKey = '';
+          tsForm.mode = settings.turnstileMode;
+        }).catch(function (err) {
+          toast(err.message, 'error');
+        });
+      }
+
+      function saveTurnstile() {
+        var body = { mode: tsForm.mode };
+        // 字段不传 = 不修改；显式传空串 = 清空（清空整体走「清空」按钮）
+        if (tsForm.siteKey.trim() !== settings.turnstileSiteKey) body.siteKey = tsForm.siteKey.trim();
+        if (tsForm.secretKey) body.secretKey = tsForm.secretKey;
+
+        tsBusy.value = true;
+        api('/settings', { method: 'POST', body: body })
+          .then(function (data) {
+            toast(data.enabled ? '已保存，人机验证已启用' : '已保存');
+            tsForm.secretKey = '';
+            return loadSettings().then(refreshTurnstile);
+          })
+          .catch(function (err) { toast(err.message, 'error'); })
+          .then(function () { tsBusy.value = false; });
+      }
+
+      function clearTurnstile() {
+        askConfirm('清空人机验证配置', '将同时清空 Site Key 与 Secret Key，清空后登录页不再显示人机验证。确定继续吗？', '清空')
+          .then(function (yes) {
+            if (!yes) return;
+            tsBusy.value = true;
+            return api('/settings', { method: 'POST', body: { siteKey: '', secretKey: '', mode: tsForm.mode } })
+              .then(function () {
+                toast('已清空人机验证配置');
+                tsForm.secretKey = '';
+                diag.value = null;
+                return loadSettings().then(refreshTurnstile);
+              })
+              .catch(function (err) { toast(err.message, 'error'); })
+              .then(function () { tsBusy.value = false; });
+          });
+      }
+
+      function runDiagnose() {
+        diagBusy.value = true;
+        api('/turnstile/diagnose')
+          .then(function (data) { diag.value = data; })
+          .catch(function (err) { toast(err.message, 'error'); })
+          .then(function () { diagBusy.value = false; });
+      }
+
+      function dismissWarning() {
+        appWarning.value = '';
+        try { sessionStorage.removeItem('ih_warning'); } catch (e) {}
       }
 
       /* ---------------- 上传 ---------------- */
@@ -1722,7 +2104,24 @@ html.dark .auth-glow{opacity:.35}
         } catch (e) {}
       });
 
-      watch(tab, function () { ctx.open = false; });
+      watch(tab, function (value) {
+        ctx.open = false;
+        if (value === 'settings') loadSettings();
+      });
+
+      // 每次进入登录/初始化页面都实时拉一次配置，覆盖本地快照。
+      // 否则「刚保存完密钥就退出登录」会拿到过期快照：页面不渲染验证框，
+      // 提交必然报「人机验证未通过」，且用户重试无效、只能强制刷新。
+      watch(view, function (value) {
+        if (value === 'login' || value === 'setup') {
+          tsWarning.value = '';
+          authCodes.value = '';
+          refreshTurnstile();
+        } else if (value === 'app') {
+          ts.token = '';
+          ts.error = '';
+        }
+      });
 
       onMounted(function () {
         boot();
@@ -1763,6 +2162,11 @@ html.dark .auth-glow{opacity:.35}
         tabTitle: tabTitle, tabSubtitle: tabSubtitle, filtered: filtered, totalSize: totalSize,
         selectedSize: selectedSize, recentCount: recentCount, recent: recent, quotaPct: quotaPct,
         allSelected: allSelected, detailItem: detailItem, detailPos: detailPos, detailUrl: detailUrl, uploadDone: uploadDone,
+        ts: ts, tsBox: tsBox, tsWarning: tsWarning, authCodes: authCodes, appWarning: appWarning,
+        settings: settings, tsForm: tsForm, diag: diag, diagBusy: diagBusy, tsBusy: tsBusy,
+        tsStatusText: tsStatusText, tsStatusClass: tsStatusClass,
+        loadSettings: loadSettings, saveTurnstile: saveTurnstile, clearTurnstile: clearTurnstile,
+        runDiagnose: runDiagnose, dismissWarning: dismissWarning, sourceText: sourceText, conclusionText: conclusionText,
         fmtSize: fmtSize, displayName: displayName, fmtDate: fmtDate, fileUrl: fileUrl, linkFormats: linkFormats,
         setTheme: setTheme, cycleTheme: cycleTheme, submitAuth: submitAuth, doLogout: doLogout,
         savePassword: savePassword, pickFiles: pickFiles, onFilePick: onFilePick,
